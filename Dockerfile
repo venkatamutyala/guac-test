@@ -1,7 +1,5 @@
 # Stage 1: The Builder Stage
 # We use a Maven image to download the JAR file from Maven Central.
-# This keeps our final image clean and only contains the necessary artifact.
-ARG GUACAMOLE_VERSION=1.5.5
 
 # renovate: datasource=maven depName=org.apache.guacamole:guacamole-auth-sso-openid
 ARG OPENID_SSO_VERSION=1.5.5
@@ -26,7 +24,7 @@ RUN mvn org.apache.maven.plugins:maven-dependency-plugin:3.3.0:get \
 
 # Stage 2: The Final Image
 # We use the official Guacamole image as our base.
-FROM guacamole/guacamole:${GUACAMOLE_VERSION}
+FROM guacamole/guacamole:1.5.5@sha256:0f62f6d17ab379e46aa66874b2ff564dab856a6ef5e754a69cbb34c32d3e588a
 
 # The user running Guacamole is `root` inside the container initially,
 # and directories are owned by `root`. We need to ensure permissions are correct.
