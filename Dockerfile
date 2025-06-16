@@ -1,48 +1,51 @@
-# Stage 1: The Builder Stage
-# We use a Maven image to download the JAR file from Maven Central.
+# Stage 1: The Downloader Stage
+# We use a lightweight image with download tools to get the official binary release.
+# This approach downloads the specific SSO extension bundle.
 
-# renovate: datasource=maven depName=org.apache.guacamole:guacamole-auth-sso-openid
-ARG OPENID_SSO_VERSION=1.5.5
-FROM maven:3.8.5-openjdk-11 AS builder
+# Set the version for Guacamole. RenovateBot can use the release tags from the
+# guacamole-client GitHub repository to suggest updates for this ARG.
+# renovate: datasource=github-releases depName=apache/guacamole-client
+ARG GUAC_VERSION=1.5.4
 
-# Set the version of the OpenID SSO extension as an argument
-# RenovateBot can be configured to automatically update this version.
-ARG OPENID_SSO_VERSION
+FROM debian:bullseye-slim AS downloader
+
+# Install required tools for downloading and extracting
+RUN apt-get update && apt-get install -y wget tar && rm -rf /var/lib/apt/lists/*
+
+# Forward the version argument into this stage
+ARG GUAC_VERSION
 
 # Set the working directory
-WORKDIR /usr/src/app
+WORKDIR /tmp
 
-# This is a trick to download the dependency without needing a full pom.xml file.
-# The `get` goal will resolve and download the artifact and its dependencies.
-# We specify the artifact by its group, artifactId, and version.
-RUN mvn org.apache.maven.plugins:maven-dependency-plugin:3.3.0:get \
-    -DrepoUrl=https://repo1.maven.org/maven2/ \
-    -Dartifact=org.apache.guacamole:guacamole-auth-sso-openid:${OPENID_SSO_VERSION} \
-    -Ddest=guacamole-auth-sso-openid.jar
+# --- Debugging Step ---
+RUN echo "Downloading Guacamole SSO binary version: ${GUAC_VERSION}"
+
+# Download the official Guacamole SSO binary distribution from the Apache archives ref: https://guacamole.apache.org/releases/
+RUN wget "https://archive.apache.org/dist/guacamole/${GUAC_VERSION}/binary/guacamole-auth-sso-${GUAC_VERSION}.tar.gz"
+
+# Extract the archive to get access to the OpenID extension
+RUN tar -xzf "guacamole-auth-sso-${GUAC_VERSION}.tar.gz"
 
 # ---
 
 # Stage 2: The Final Image
 # We use the official Guacamole image as our base.
-FROM guacamole/guacamole:1.5.5@sha256:0f62f6d17ab379e46aa66874b2ff564dab856a6ef5e754a69cbb34c32d3e588a
+FROM guacamole/guacamole:${GUAC_VERSION}
 
-# The user running Guacamole is `root` inside the container initially,
-# and directories are owned by `root`. We need to ensure permissions are correct.
-# The GUACAMOLE_HOME environment variable is set to /etc/guacamole by default.
-# The extensions directory is expected to be in $GUACAMOLE_HOME/extensions
+# Forward the version argument into the final stage
+ARG GUAC_VERSION
 
-# Set the version of the OpenID SSO extension again
-ARG OPENID_SSO_VERSION
+# Set the GUACAMOLE_HOME to the new directory so Guacamole can find its files.
+ENV GUACAMOLE_HOME /home/guacamole
 
-# Create the target directory for the custom extension.
-# The official Guacamole image will automatically load extensions from this directory.
-# Using /opt/ is a common practice for add-on software.
-# We are creating it inside GUACAMOLE_HOME so Guacamole can find it.
-# The standard location is /etc/guacamole/extensions
-RUN mkdir -p /etc/guacamole/extensions
+# Create the extensions directory inside our new GUACAMOLE_HOME.
+RUN mkdir -p /home/guacamole/glueops/extensions
 
-# Copy the JAR from the builder stage to the extensions directory in the final image.
-COPY --from=builder /usr/src/app/guacamole-auth-sso-openid.jar /etc/guacamole/extensions/guacamole-auth-sso-openid-${OPENID_SSO_VERSION}.jar
+ENV GUACAMOLE_HOME /home/guacamole/glueops/
 
-# You can add more configuration here if needed, for example, copying a guacamole.properties file.
-# COPY guacamole.properties /etc/guacamole/guacamole.properties
+# Copy only the required OpenID SSO JAR from the downloader stage to the new extensions directory.
+# The path reflects the structure of the guacamole-auth-sso archive.
+COPY --from=downloader "/tmp/guacamole-auth-sso-${GUAC_VERSION}/openid/guacamole-auth-sso-openid-${GUAC_VERSION}.jar" $GUACAMOLE_HOME/extensions/
+
+
