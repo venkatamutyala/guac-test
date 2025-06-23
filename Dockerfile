@@ -5,7 +5,7 @@
 # Set the version for Guacamole. RenovateBot can use the release tags from the
 # guacamole-client GitHub repository to suggest updates for this ARG.
 # renovate: datasource=github-releases depName=apache/guacamole-client
-ARG GUAC_VERSION=1.5.5
+ARG GUAC_VERSION=1.6.0
 
 FROM debian:bullseye-slim AS downloader
 
